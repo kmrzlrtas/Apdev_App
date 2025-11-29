@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { initializeDatabase } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
@@ -60,6 +61,15 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Initialize database if DATABASE_URL is set
+  if (process.env.DATABASE_URL) {
+    try {
+      await initializeDatabase();
+    } catch (error) {
+      console.error("Failed to initialize database, falling back to in-memory storage");
+    }
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

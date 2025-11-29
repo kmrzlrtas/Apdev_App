@@ -1,8 +1,12 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { storage as pgStorage } from "./storage-pg";
 import { storage } from "./storage";
 import { analyzeMeal, generateHealthTip } from "./openai";
 import { insertMealSchema, analyzeMealRequestSchema, insertChatMessageSchema, insertProfileSchema, insertUserSchema } from "@shared/schema";
+
+// Use PostgreSQL if DATABASE_URL is set, otherwise use in-memory storage
+const activeStorage = process.env.DATABASE_URL && pgStorage ? pgStorage : storage;
 
 export async function registerRoutes(
   httpServer: Server,
@@ -18,15 +22,15 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid credentials" });
       }
 
-      const existingUser = await storage.getUserByUsername(parsed.data.username);
+      const existingUser = await activeStorage.getUserByUsername(parsed.data.username);
       if (existingUser) {
         return res.status(400).json({ error: "Username already exists" });
       }
 
-      const user = await storage.createUser(parsed.data);
+      const user = await activeStorage.createUser(parsed.data);
       
       // Create default profile
-      await storage.createProfile(user.id, {
+      await activeStorage.createProfile(user.id, {
         name: parsed.data.username,
         email: `${parsed.data.username}@nutritrack.ph`,
       });
