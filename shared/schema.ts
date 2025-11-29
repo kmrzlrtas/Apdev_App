@@ -92,17 +92,52 @@ export const analyzeMealResponseSchema = z.object({
 
 export type AnalyzeMealResponse = z.infer<typeof analyzeMealResponseSchema>;
 
-// User schema (keeping existing)
+// User schema
 export const userSchema = z.object({
   id: z.string(),
   username: z.string(),
   password: z.string(),
 });
 
-export const insertUserSchema = userSchema.omit({ id: true });
+export const insertUserSchema = z.object({
+  username: z.string().min(3),
+  password: z.string().min(6),
+});
 
 export type User = z.infer<typeof userSchema>;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+
+// User Profile schema
+export const profileSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  name: z.string(),
+  email: z.string().email(),
+  age: z.number().optional(),
+  height: z.number().optional(),
+  weight: z.number().optional(),
+  goals: z.array(z.string()).optional(),
+  createdAt: z.string(),
+});
+
+export const insertProfileSchema = profileSchema.omit({ id: true, userId: true, createdAt: true });
+
+export type Profile = z.infer<typeof profileSchema>;
+export type InsertProfile = z.infer<typeof insertProfileSchema>;
+
+// Chat message schema
+export const chatMessageSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  timestamp: z.string(),
+});
+
+export const insertChatMessageSchema = chatMessageSchema.omit({ id: true, timestamp: true });
+
+export type ChatMessage = z.infer<typeof chatMessageSchema>;
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 
 // Weekly trend data
 export const weeklyTrendSchema = z.object({

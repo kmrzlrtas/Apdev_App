@@ -5,6 +5,12 @@ import {
   type HealthTip,
   type DailySummary,
   type WeeklyTrend,
+  type User,
+  type InsertUser,
+  type Profile,
+  type InsertProfile,
+  type ChatMessage,
+  type InsertChatMessage,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -19,17 +25,31 @@ export interface IStorage {
   getRecipe(id: string): Promise<Recipe | undefined>;
   getHealthTips(): Promise<HealthTip[]>;
   getDailyTip(): Promise<HealthTip>;
+  createUser(user: InsertUser): Promise<User>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  getUser(id: string): Promise<User | undefined>;
+  createProfile(userId: string, profile: InsertProfile): Promise<Profile>;
+  getProfile(userId: string): Promise<Profile | undefined>;
+  updateProfile(userId: string, profile: Partial<InsertProfile>): Promise<Profile | undefined>;
+  createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
+  getChatMessages(userId: string): Promise<ChatMessage[]>;
 }
 
 export class MemStorage implements IStorage {
   private meals: Map<string, Meal>;
   private recipes: Map<string, Recipe>;
   private healthTips: Map<string, HealthTip>;
+  private users: Map<string, User>;
+  private profiles: Map<string, Profile>;
+  private chatMessages: Map<string, ChatMessage>;
 
   constructor() {
     this.meals = new Map();
     this.recipes = new Map();
     this.healthTips = new Map();
+    this.users = new Map();
+    this.profiles = new Map();
+    this.chatMessages = new Map();
     this.seedData();
   }
 
@@ -404,6 +424,62 @@ export class MemStorage implements IStorage {
       (today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / 86400000
     );
     return tips[dayOfYear % tips.length];
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const id = randomUUID();
+    const user: User = { ...insertUser, id };
+    this.users.set(id, user);
+    return user;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find((u) => u.username === username);
+  }
+
+  async getUser(id: string): Promise<User | undefined> {
+    return this.users.get(id);
+  }
+
+  async createProfile(userId: string, insertProfile: InsertProfile): Promise<Profile> {
+    const id = randomUUID();
+    const profile: Profile = {
+      ...insertProfile,
+      id,
+      userId,
+      createdAt: new Date().toISOString(),
+    };
+    this.profiles.set(userId, profile);
+    return profile;
+  }
+
+  async getProfile(userId: string): Promise<Profile | undefined> {
+    return this.profiles.get(userId);
+  }
+
+  async updateProfile(userId: string, updates: Partial<InsertProfile>): Promise<Profile | undefined> {
+    const profile = this.profiles.get(userId);
+    if (!profile) return undefined;
+    const updated = { ...profile, ...updates };
+    this.profiles.set(userId, updated);
+    return updated;
+  }
+
+  async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
+    const id = randomUUID();
+    const chatMessage: ChatMessage = {
+      ...message,
+      id,
+      timestamp: new Date().toISOString(),
+    };
+    this.chatMessages.set(id, chatMessage);
+    return chatMessage;
+  }
+
+  async getChatMessages(userId: string): Promise<ChatMessage[]> {
+    return Array.from(this.chatMessages.values())
+      .filter((m) => m.userId === userId)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }
 }
 

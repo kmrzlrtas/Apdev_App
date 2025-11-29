@@ -6,6 +6,8 @@ import {
   BookOpen,
   TrendingUp,
   Leaf,
+  MessageCircle,
+  User,
 } from "lucide-react";
 import {
   Sidebar,
@@ -45,6 +47,16 @@ const menuItems = [
     title: "Health Tips",
     url: "/tips",
     icon: BookOpen,
+  },
+  {
+    title: "AI Assistant",
+    url: "/chat",
+    icon: MessageCircle,
+  },
+  {
+    title: "Profile",
+    url: "/profile",
+    icon: User,
   },
 ];
 

@@ -11,6 +11,8 @@ import CalendarPage from "@/pages/calendar";
 import RecipesPage from "@/pages/recipes";
 import HistoryPage from "@/pages/history";
 import TipsPage from "@/pages/tips";
+import ChatPage from "@/pages/chat";
+import ProfilePage from "@/pages/profile";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -21,6 +23,8 @@ function Router() {
       <Route path="/recipes" component={RecipesPage} />
       <Route path="/history" component={HistoryPage} />
       <Route path="/tips" component={TipsPage} />
+      <Route path="/chat" component={ChatPage} />
+      <Route path="/profile" component={ProfilePage} />
       <Route component={NotFound} />
     </Switch>
   );

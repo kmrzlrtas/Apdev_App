@@ -1,8 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { analyzeMeal } from "./openai";
-import { insertMealSchema, analyzeMealRequestSchema } from "@shared/schema";
+import { analyzeMeal, generateHealthTip } from "./openai";
+import { insertMealSchema, analyzeMealRequestSchema, insertChatMessageSchema, insertProfileSchema } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -148,6 +148,122 @@ export async function registerRoutes(
       res.json(tip);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch daily tip" });
+    }
+  });
+
+  // Chat endpoints
+  app.get("/api/chat", async (req, res) => {
+    try {
+      const userId = req.query.userId as string || "demo-user";
+      const messages = await storage.getChatMessages(userId);
+      res.json(messages);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch chat messages" });
+    }
+  });
+
+  app.post("/api/chat", async (req, res) => {
+    try {
+      const userId = req.query.userId as string || "demo-user";
+      const { content } = req.body;
+
+      if (!content || typeof content !== "string") {
+        return res.status(400).json({ error: "Content is required" });
+      }
+
+      // Save user message
+      const userMessage = await storage.createChatMessage({
+        userId,
+        role: "user",
+        content,
+      });
+
+      // Generate AI response using OpenAI
+      const systemPrompt = `You are a friendly nutrition assistant specializing in Filipino cuisine. 
+You help users track their meals, provide nutritional advice, suggest affordable recipes with local ingredients, 
+and give personalized health tips aligned with SDG 3: Good Health and Well-Being. 
+Keep responses concise and encouraging.`;
+
+      try {
+        const assistantResponse = await generateHealthTip(content);
+        
+        const assistantMessage = await storage.createChatMessage({
+          userId,
+          role: "assistant",
+          content: assistantResponse,
+        });
+
+        res.status(201).json({
+          userMessage,
+          assistantMessage,
+        });
+      } catch (aiError) {
+        console.error("AI response error:", aiError);
+        // Fallback response
+        const fallbackMessage = await storage.createChatMessage({
+          userId,
+          role: "assistant",
+          content: "That's a great question! Try describing your meal or asking about specific recipes. I'm here to help you make nutritious choices with Filipino ingredients!",
+        });
+
+        res.status(201).json({
+          userMessage,
+          assistantMessage: fallbackMessage,
+        });
+      }
+    } catch (error) {
+      console.error("Chat error:", error);
+      res.status(500).json({ error: "Failed to process chat message" });
+    }
+  });
+
+  // Profile endpoints
+  app.get("/api/profile", async (req, res) => {
+    try {
+      const userId = req.query.userId as string || "demo-user";
+      const profile = await storage.getProfile(userId);
+      
+      if (!profile) {
+        // Create a default profile if it doesn't exist
+        const defaultProfile = await storage.createProfile(userId, {
+          name: "User",
+          email: "user@example.com",
+        });
+        return res.json(defaultProfile);
+      }
+
+      res.json(profile);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch profile" });
+    }
+  });
+
+  app.patch("/api/profile", async (req, res) => {
+    try {
+      const userId = req.query.userId as string || "demo-user";
+      const parsed = insertProfileSchema.partial().safeParse(req.body);
+
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid profile data" });
+      }
+
+      let profile = await storage.getProfile(userId);
+      
+      if (!profile) {
+        // Create profile if it doesn't exist
+        profile = await storage.createProfile(userId, {
+          name: parsed.data.name || "User",
+          email: parsed.data.email || "user@example.com",
+        });
+      } else {
+        // Update existing profile
+        profile = await storage.updateProfile(userId, parsed.data);
+      }
+
+      res.json(profile);
+    } catch (error) {
+      console.error("Profile update error:", error);
+      res.status(500).json({ error: "Failed to update profile" });
     }
   });
 
