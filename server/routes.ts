@@ -2,14 +2,90 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { analyzeMeal, generateHealthTip } from "./openai";
-import { insertMealSchema, analyzeMealRequestSchema, insertChatMessageSchema, insertProfileSchema } from "@shared/schema";
+import { insertMealSchema, analyzeMealRequestSchema, insertChatMessageSchema, insertProfileSchema, insertUserSchema } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
   // IMPORTANT: Define specific routes BEFORE parameterized routes
-  
+
+  // Auth endpoints
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const parsed = insertUserSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid credentials" });
+      }
+
+      const existingUser = await storage.getUserByUsername(parsed.data.username);
+      if (existingUser) {
+        return res.status(400).json({ error: "Username already exists" });
+      }
+
+      const user = await storage.createUser(parsed.data);
+      
+      // Create default profile
+      await storage.createProfile(user.id, {
+        name: parsed.data.username,
+        email: `${parsed.data.username}@nutritrack.ph`,
+      });
+
+      res.status(201).json(user);
+    } catch (error) {
+      console.error("Register error:", error);
+      res.status(500).json({ error: "Registration failed" });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { username, password } = req.body;
+
+      if (!username || !password) {
+        return res.status(400).json({ error: "Username and password required" });
+      }
+
+      const user = await storage.getUserByUsername(username);
+      if (!user || user.password !== password) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
+      res.json(user);
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  app.get("/api/auth/session", async (req, res) => {
+    try {
+      // For demo purposes, check if user ID is passed
+      const userId = req.query.userId as string;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(401).json({ error: "User not found" });
+      }
+
+      res.json(user);
+    } catch (error) {
+      console.error("Session check error:", error);
+      res.status(401).json({ error: "Session check failed" });
+    }
+  });
+
+  app.post("/api/auth/logout", async (req, res) => {
+    try {
+      res.json({ message: "Logged out successfully" });
+    } catch (error) {
+      res.status(500).json({ error: "Logout failed" });
+    }
+  });
+
   // Analyze meal with AI (must be before /api/meals/:id)
   app.post("/api/meals/analyze", async (req, res) => {
     try {

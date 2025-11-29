@@ -8,7 +8,9 @@ import {
   Leaf,
   MessageCircle,
   User,
+  LogOut,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 import {
   Sidebar,
   SidebarContent,
@@ -62,6 +64,7 @@ const menuItems = [
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const { logout } = useAuth();
 
   return (
     <Sidebar>
@@ -100,12 +103,20 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="space-y-3 p-4">
         <div className="rounded-md bg-primary/10 p-3">
           <p className="text-xs text-muted-foreground">
             Supporting <span className="font-medium text-primary">SDG 3</span>: Good Health and Well-Being
           </p>
         </div>
+        <button
+          onClick={() => logout()}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          data-testid="button-logout"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Logout</span>
+        </button>
       </SidebarFooter>
     </Sidebar>
   );
