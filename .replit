@@ -18,10 +18,6 @@ externalPort = 80
 localPort = 33351
 externalPort = 3001
 
-[[ports]]
-localPort = 40445
-externalPort = 3000
-
 [env]
 PORT = "5000"
 
@@ -48,3 +44,8 @@ waitForPort = 5000
 
 [agent]
 integrations = ["javascript_mem_db:1.0.0", "javascript_openai:1.0.0"]
+
+[userenv]
+
+[userenv.shared]
+DATABASE_URL = "postgresql://neondb_owner:npg_IcH8lXeO7UZu@ep-broad-thunder-aho5vla3-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
