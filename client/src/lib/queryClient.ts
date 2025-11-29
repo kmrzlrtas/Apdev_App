@@ -11,7 +11,7 @@ export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
-): Promise<Response> {
+): Promise<unknown> {
   const res = await fetch(url, {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},
@@ -20,7 +20,42 @@ export async function apiRequest(
   });
 
   await throwIfResNotOk(res);
+  
+  // Return JSON for non-DELETE requests
+  if (method !== "DELETE") {
+    return res.json();
+  }
   return res;
+}
+
+function buildUrl(queryKey: readonly unknown[]): string {
+  const [baseUrl, ...rest] = queryKey;
+  
+  if (typeof baseUrl !== "string") {
+    throw new Error("First element of queryKey must be a string URL");
+  }
+  
+  // If there's a second element and it's an object, treat it as query params
+  if (rest.length > 0 && typeof rest[0] === "object" && rest[0] !== null) {
+    const params = rest[0] as Record<string, string | number | boolean | undefined>;
+    const searchParams = new URLSearchParams();
+    
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined) {
+        searchParams.append(key, String(value));
+      }
+    }
+    
+    const queryString = searchParams.toString();
+    return queryString ? `${baseUrl}?${queryString}` : baseUrl;
+  }
+  
+  // Otherwise join as path segments
+  if (rest.length > 0) {
+    return [baseUrl, ...rest].join("/");
+  }
+  
+  return baseUrl;
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
@@ -29,7 +64,8 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    const url = buildUrl(queryKey);
+    const res = await fetch(url, {
       credentials: "include",
     });
 
@@ -47,7 +83,7 @@ export const queryClient = new QueryClient({
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
+      staleTime: 60000,
       retry: false,
     },
     mutations: {
