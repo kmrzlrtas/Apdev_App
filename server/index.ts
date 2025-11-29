@@ -95,11 +95,13 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
+  // Use localhost for Windows/local development, 0.0.0.0 for Replit/cloud
+  const host = process.platform === "win32" ? "localhost" : "0.0.0.0";
   httpServer.listen(
     {
       port,
-      host: "0.0.0.0",
-      reusePort: true,
+      host,
+      reusePort: process.platform !== "win32",
     },
     () => {
       log(`serving on port ${port}`);
