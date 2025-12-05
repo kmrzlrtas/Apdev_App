@@ -16,12 +16,12 @@ import { pool } from "./db";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
-  getMeals(filters?: { date?: string; startDate?: string; endDate?: string }): Promise<Meal[]>;
+  getMeals(filters?: { date?: string; startDate?: string; endDate?: string; userId?: string }): Promise<Meal[]>;
   getMeal(id: string): Promise<Meal | undefined>;
   createMeal(meal: InsertMeal): Promise<Meal>;
   deleteMeal(id: string): Promise<boolean>;
-  getDailySummary(date: string): Promise<DailySummary>;
-  getWeeklyTrends(period?: string): Promise<WeeklyTrend[]>;
+  getDailySummary(date: string, userId?: string): Promise<DailySummary>;
+  getWeeklyTrends(period?: string, userId?: string): Promise<WeeklyTrend[]>;
   getRecipes(): Promise<Recipe[]>;
   getRecipe(id: string): Promise<Recipe | undefined>;
   getHealthTips(): Promise<HealthTip[]>;
@@ -181,8 +181,37 @@ export class PostgresStorage implements IStorage {
   }
 
   // Meals
-  async getMeals(): Promise<Meal[]> {
-    const result = await pool.query("SELECT * FROM meals ORDER BY date DESC");
+  async getMeals(filters?: { date?: string; startDate?: string; endDate?: string; userId?: string }): Promise<Meal[]> {
+    let query = "SELECT * FROM meals WHERE 1=1";
+    const params: any[] = [];
+    let paramCount = 1;
+
+    if (filters?.userId) {
+      query += ` AND user_id = $${paramCount}`;
+      params.push(filters.userId);
+      paramCount++;
+    }
+
+    if (filters?.date) {
+      query += ` AND date = $${paramCount}`;
+      params.push(filters.date);
+      paramCount++;
+    }
+
+    if (filters?.startDate) {
+      query += ` AND date >= $${paramCount}`;
+      params.push(filters.startDate);
+      paramCount++;
+    }
+
+    if (filters?.endDate) {
+      query += ` AND date <= $${paramCount}`;
+      params.push(filters.endDate);
+      paramCount++;
+    }
+
+    query += " ORDER BY date DESC";
+    const result = await pool.query(query, params);
     return result.rows.map((row) => ({
       id: row.id,
       name: row.name,
@@ -224,9 +253,10 @@ export class PostgresStorage implements IStorage {
   async createMeal(meal: InsertMeal): Promise<Meal> {
     const id = randomUUID();
     await pool.query(
-      "INSERT INTO meals (id, name, description, meal_type, date, time, calories, protein, carbs, fats, fiber, sodium, image_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+      "INSERT INTO meals (id, user_id, name, description, meal_type, date, time, calories, protein, carbs, fats, fiber, sodium, image_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
       [
         id,
+        meal.userId,
         meal.name,
         meal.description,
         meal.mealType,
@@ -249,11 +279,14 @@ export class PostgresStorage implements IStorage {
     return result.rowCount! > 0;
   }
 
-  async getDailySummary(date: string): Promise<DailySummary> {
-    const result = await pool.query(
-      "SELECT SUM(calories) as total_calories, SUM(protein) as total_protein, SUM(carbs) as total_carbs, SUM(fats) as total_fats, COUNT(*) as meal_count FROM meals WHERE date = $1",
-      [date]
-    );
+  async getDailySummary(date: string, userId?: string): Promise<DailySummary> {
+    let query = "SELECT SUM(calories) as total_calories, SUM(protein) as total_protein, SUM(carbs) as total_carbs, SUM(fats) as total_fats, COUNT(*) as meal_count FROM meals WHERE date = $1";
+    const params: any[] = [date];
+    if (userId) {
+      query += " AND user_id = $2";
+      params.push(userId);
+    }
+    const result = await pool.query(query, params);
     const row = result.rows[0];
     return {
       date,
@@ -265,10 +298,19 @@ export class PostgresStorage implements IStorage {
     };
   }
 
-  async getWeeklyTrends(): Promise<WeeklyTrend[]> {
-    const result = await pool.query(
-      "SELECT date, SUM(calories) as total_calories, SUM(protein) as total_protein, SUM(carbs) as total_carbs, SUM(fats) as total_fats FROM meals GROUP BY date ORDER BY date DESC LIMIT 7"
-    );
+  async getWeeklyTrends(period?: string, userId?: string): Promise<WeeklyTrend[]> {
+    let query = "SELECT date, SUM(calories) as total_calories, SUM(protein) as total_protein, SUM(carbs) as total_carbs, SUM(fats) as total_fats FROM meals WHERE 1=1";
+    const params: any[] = [];
+    let paramCount = 1;
+    
+    if (userId) {
+      query += ` AND user_id = $${paramCount}`;
+      params.push(userId);
+      paramCount++;
+    }
+    
+    query += " GROUP BY date ORDER BY date DESC LIMIT 7";
+    const result = await pool.query(query, params);
     return result.rows.map((row) => ({
       date: row.date,
       totalCalories: row.total_calories,

@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage as pgStorage } from "./storage-pg";
 import { storage } from "./storage";
 import { analyzeMeal, generateHealthTip } from "./openai";
+import { nutritionModel, recommendationModel, trendModel, anomalyModel } from "./ml-service";
 import { insertMealSchema, analyzeMealRequestSchema, insertChatMessageSchema, insertProfileSchema, insertUserSchema } from "@shared/schema";
 
 // Use PostgreSQL if DATABASE_URL is set, otherwise use in-memory storage
@@ -50,10 +51,18 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Username and password required" });
       }
 
-      const user = await storage.getUserByUsername(username);
+      const user = await activeStorage.getUserByUsername(username);
       if (!user || user.password !== password) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
+
+      // Store user ID in session
+      req.session.userId = user.id;
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+        }
+      });
 
       res.json(user);
     } catch (error) {
@@ -64,14 +73,16 @@ export async function registerRoutes(
 
   app.get("/api/auth/session", async (req, res) => {
     try {
-      // For demo purposes, check if user ID is passed
-      const userId = req.query.userId as string;
+      // Get user ID from session
+      const userId = req.session?.userId as string;
       if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
 
-      const user = await storage.getUser(userId);
+      const user = await activeStorage.getUser(userId);
       if (!user) {
+        // Clear invalid session
+        req.session.destroy(() => {});
         return res.status(401).json({ error: "User not found" });
       }
 
@@ -84,8 +95,15 @@ export async function registerRoutes(
 
   app.post("/api/auth/logout", async (req, res) => {
     try {
-      res.json({ message: "Logged out successfully" });
+      req.session.destroy((err) => {
+        if (err) {
+          console.error("Session destroy error:", err);
+          return res.status(500).json({ error: "Logout failed" });
+        }
+        res.json({ message: "Logged out successfully" });
+      });
     } catch (error) {
+      console.error("Logout error:", error);
       res.status(500).json({ error: "Logout failed" });
     }
   });
@@ -109,9 +127,13 @@ export async function registerRoutes(
   // Get daily summary (must be before /api/meals/:id)
   app.get("/api/meals/summary", async (req, res) => {
     try {
+      const userId = req.session?.userId as string;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
       const { date } = req.query;
       const dateStr = typeof date === "string" ? date : new Date().toISOString().split("T")[0];
-      const summary = await storage.getDailySummary(dateStr);
+      const summary = await activeStorage.getDailySummary(dateStr, userId);
       res.json(summary);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch summary" });
@@ -121,8 +143,12 @@ export async function registerRoutes(
   // Get weekly/monthly trends (must be before /api/meals/:id)
   app.get("/api/meals/trends", async (req, res) => {
     try {
+      const userId = req.session?.userId as string;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
       const { period } = req.query;
-      const trends = await storage.getWeeklyTrends(typeof period === "string" ? period : undefined);
+      const trends = await activeStorage.getWeeklyTrends(typeof period === "string" ? period : undefined, userId);
       res.json(trends);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch trends" });
@@ -139,7 +165,11 @@ export async function registerRoutes(
       if (typeof startDate === "string") filters.startDate = startDate;
       if (typeof endDate === "string") filters.endDate = endDate;
       
-      const meals = await storage.getMeals(Object.keys(filters).length > 0 ? filters : undefined);
+      const userId = req.session?.userId as string;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      const meals = await activeStorage.getMeals({ ...filters, userId });
       res.json(meals);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch meals" });
@@ -149,7 +179,7 @@ export async function registerRoutes(
   // Get single meal (parameterized route - must be AFTER specific routes)
   app.get("/api/meals/:id", async (req, res) => {
     try {
-      const meal = await storage.getMeal(req.params.id);
+      const meal = await activeStorage.getMeal(req.params.id);
       if (!meal) {
         return res.status(404).json({ error: "Meal not found" });
       }
@@ -167,7 +197,11 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid meal data", details: parsed.error.errors });
       }
 
-      const meal = await storage.createMeal(parsed.data);
+      const userId = req.session?.userId as string;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      const meal = await activeStorage.createMeal({ ...parsed.data, userId });
       res.status(201).json(meal);
     } catch (error) {
       console.error("Create meal error:", error);
@@ -178,7 +212,7 @@ export async function registerRoutes(
   // Delete meal
   app.delete("/api/meals/:id", async (req, res) => {
     try {
-      const deleted = await storage.deleteMeal(req.params.id);
+      const deleted = await activeStorage.deleteMeal(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Meal not found" });
       }
@@ -191,7 +225,7 @@ export async function registerRoutes(
   // Get all recipes
   app.get("/api/recipes", async (req, res) => {
     try {
-      const recipes = await storage.getRecipes();
+      const recipes = await activeStorage.getRecipes();
       res.json(recipes);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch recipes" });
@@ -201,7 +235,7 @@ export async function registerRoutes(
   // Get single recipe
   app.get("/api/recipes/:id", async (req, res) => {
     try {
-      const recipe = await storage.getRecipe(req.params.id);
+      const recipe = await activeStorage.getRecipe(req.params.id);
       if (!recipe) {
         return res.status(404).json({ error: "Recipe not found" });
       }
@@ -214,7 +248,7 @@ export async function registerRoutes(
   // Get all health tips
   app.get("/api/tips", async (req, res) => {
     try {
-      const tips = await storage.getHealthTips();
+      const tips = await activeStorage.getHealthTips();
       res.json(tips);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch tips" });
@@ -224,7 +258,7 @@ export async function registerRoutes(
   // Get daily tip
   app.get("/api/tips/daily", async (req, res) => {
     try {
-      const tip = await storage.getDailyTip();
+      const tip = await activeStorage.getDailyTip();
       res.json(tip);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch daily tip" });
@@ -234,8 +268,11 @@ export async function registerRoutes(
   // Chat endpoints
   app.get("/api/chat", async (req, res) => {
     try {
-      const userId = req.query.userId as string || "demo-user";
-      const messages = await storage.getChatMessages(userId);
+      const userId = req.session?.userId as string;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      const messages = await activeStorage.getChatMessages(userId);
       res.json(messages);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch chat messages" });
@@ -244,7 +281,10 @@ export async function registerRoutes(
 
   app.post("/api/chat", async (req, res) => {
     try {
-      const userId = req.query.userId as string || "demo-user";
+      const userId = req.session?.userId as string;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
       const { content } = req.body;
 
       if (!content || typeof content !== "string") {
@@ -252,7 +292,7 @@ export async function registerRoutes(
       }
 
       // Save user message
-      const userMessage = await storage.createChatMessage({
+      const userMessage = await activeStorage.createChatMessage({
         userId,
         role: "user",
         content,
@@ -267,7 +307,7 @@ Keep responses concise and encouraging.`;
       try {
         const assistantResponse = await generateHealthTip(content);
         
-        const assistantMessage = await storage.createChatMessage({
+        const assistantMessage = await activeStorage.createChatMessage({
           userId,
           role: "assistant",
           content: assistantResponse,
@@ -280,7 +320,7 @@ Keep responses concise and encouraging.`;
       } catch (aiError) {
         console.error("AI response error:", aiError);
         // Fallback response
-        const fallbackMessage = await storage.createChatMessage({
+        const fallbackMessage = await activeStorage.createChatMessage({
           userId,
           role: "assistant",
           content: "That's a great question! Try describing your meal or asking about specific recipes. I'm here to help you make nutritious choices with Filipino ingredients!",
@@ -300,12 +340,15 @@ Keep responses concise and encouraging.`;
   // Profile endpoints
   app.get("/api/profile", async (req, res) => {
     try {
-      const userId = req.query.userId as string || "demo-user";
-      const profile = await storage.getProfile(userId);
+      const userId = req.session?.userId as string;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      const profile = await activeStorage.getProfile(userId);
       
       if (!profile) {
         // Create a default profile if it doesn't exist
-        const defaultProfile = await storage.createProfile(userId, {
+        const defaultProfile = await activeStorage.createProfile(userId, {
           name: "User",
           email: "user@example.com",
         });
@@ -320,30 +363,103 @@ Keep responses concise and encouraging.`;
 
   app.patch("/api/profile", async (req, res) => {
     try {
-      const userId = req.query.userId as string || "demo-user";
+      const userId = req.session?.userId as string;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
       const parsed = insertProfileSchema.partial().safeParse(req.body);
 
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid profile data" });
       }
 
-      let profile = await storage.getProfile(userId);
+      let profile = await activeStorage.getProfile(userId);
       
       if (!profile) {
         // Create profile if it doesn't exist
-        profile = await storage.createProfile(userId, {
+        profile = await activeStorage.createProfile(userId, {
           name: parsed.data.name || "User",
           email: parsed.data.email || "user@example.com",
         });
       } else {
         // Update existing profile
-        profile = await storage.updateProfile(userId, parsed.data);
+        profile = await activeStorage.updateProfile(userId, parsed.data);
       }
 
       res.json(profile);
     } catch (error) {
       console.error("Profile update error:", error);
       res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  // ML-powered endpoints
+  // Get personalized meal recommendations
+  app.get("/api/ml/recommendations", async (req, res) => {
+    try {
+      const userId = req.session?.userId as string;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      const { limit } = req.query;
+      const recommendations = await recommendationModel.recommend(
+        userId,
+        {},
+        limit ? parseInt(limit as string) : 5
+      );
+      res.json(recommendations);
+    } catch (error) {
+      console.error("Recommendation error:", error);
+      res.status(500).json({ error: "Failed to get recommendations" });
+    }
+  });
+
+  // Get health trend predictions
+  app.get("/api/ml/trends", async (req, res) => {
+    try {
+      const userId = req.session?.userId as string;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      const { days } = req.query;
+      const predictions = await trendModel.predict(
+        userId,
+        days ? parseInt(days as string) : 30
+      );
+      res.json(predictions);
+    } catch (error) {
+      console.error("Trend prediction error:", error);
+      res.status(500).json({ error: "Failed to predict trends" });
+    }
+  });
+
+  // Detect eating pattern anomalies
+  app.get("/api/ml/anomalies", async (req, res) => {
+    try {
+      const userId = req.session?.userId as string;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      const anomalies = await anomalyModel.detectAnomalies(userId);
+      res.json(anomalies);
+    } catch (error) {
+      console.error("Anomaly detection error:", error);
+      res.status(500).json({ error: "Failed to detect anomalies" });
+    }
+  });
+
+  // ML-powered nutrition prediction (alternative to OpenAI)
+  app.post("/api/ml/predict-nutrition", async (req, res) => {
+    try {
+      const { mealDescription, mealType } = req.body;
+      if (!mealDescription || !mealType) {
+        return res.status(400).json({ error: "Meal description and type required" });
+      }
+      const prediction = await nutritionModel.predict(mealDescription, mealType);
+      res.json(prediction);
+    } catch (error) {
+      console.error("Nutrition prediction error:", error);
+      res.status(500).json({ error: "Failed to predict nutrition" });
     }
   });
 

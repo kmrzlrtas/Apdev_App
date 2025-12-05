@@ -8,7 +8,8 @@
     <meta property="og:title" content="NutriTrackPH - AI-Powered Nutrition Assistant" />
     <meta property="og:description" content="Your personal health-focused digital calendar for meal tracking, nutrition awareness, and balanced eating habits." />
     <meta property="og:type" content="website" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -16,5 +17,190 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // ULTRA-AGGRESSIVE Replit logo removal - runs before anything loads
+      (function() {
+        // Block any Replit-related network requests
+        const originalFetch = window.fetch;
+        window.fetch = function(...args) {
+          const url = args[0]?.toString() || '';
+          if (/replit/i.test(url)) {
+            return Promise.reject(new Error('Blocked Replit request'));
+          }
+          return originalFetch.apply(this, args);
+        };
+        
+        // Block any Replit-related image loading
+        const originalCreateElement = document.createElement;
+        document.createElement = function(tagName, ...args) {
+          const element = originalCreateElement.call(this, tagName, ...args);
+          if (tagName.toLowerCase() === 'img' || tagName.toLowerCase() === 'iframe') {
+            const originalSrcSetter = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src')?.set || 
+                                     Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'src')?.set;
+            if (originalSrcSetter) {
+              Object.defineProperty(element, 'src', {
+                set: function(value) {
+                  if (value && /replit/i.test(value.toString())) {
+                    console.log('Blocked Replit image:', value);
+                    return;
+                  }
+                  originalSrcSetter.call(this, value);
+                },
+                get: function() {
+                  return this.getAttribute('src') || '';
+                }
+              });
+            }
+          }
+          return element;
+        };
+        
+        function removeReplitBranding() {
+          // Remove elements with Replit-related classes/IDs/attributes
+          const selectors = [
+            '[class*="replit" i]',
+            '[id*="replit" i]',
+            '[class*="Replit"]',
+            '[id*="Replit"]',
+            'iframe[src*="replit" i]',
+            'div[data-replit]',
+            'a[href*="replit" i]',
+            'img[src*="replit" i]',
+            'img[alt*="replit" i]',
+            'svg[class*="replit" i]',
+            '*[style*="replit" i]',
+            '*[data-replit]'
+          ];
+          
+          selectors.forEach(selector => {
+            try {
+              document.querySelectorAll(selector).forEach(el => {
+                el.remove();
+              });
+            } catch(e) {}
+          });
+          
+          // Remove all images that might be logos
+          document.querySelectorAll('img').forEach(img => {
+            const src = (img.src || '').toLowerCase();
+            const alt = (img.alt || '').toLowerCase();
+            if (src.includes('replit') || alt.includes('replit') || 
+                src.includes('logo') && (src.includes('replit') || alt.includes('replit'))) {
+              img.remove();
+            }
+          });
+          
+          // Remove SVGs that might contain logos
+          document.querySelectorAll('svg').forEach(svg => {
+            const svgHTML = svg.innerHTML.toLowerCase();
+            const className = (svg.className?.baseVal || svg.className || '').toLowerCase();
+            if (svgHTML.includes('replit') || className.includes('replit')) {
+              svg.remove();
+            }
+          });
+          
+          // Remove any elements containing "Replit" text (more aggressive)
+          const allElements = document.querySelectorAll('*');
+          allElements.forEach(el => {
+            const text = el.textContent || '';
+            const innerHTML = el.innerHTML || '';
+            if (/replit/i.test(text) || /replit/i.test(innerHTML)) {
+              // Don't remove the root or body
+              if (el !== document.body && el !== document.documentElement && 
+                  el !== document.getElementById('root')) {
+                // Check if it's a small element (likely a logo/banner)
+                const rect = el.getBoundingClientRect();
+                if (rect.width < 500 && rect.height < 200) {
+                  el.remove();
+                } else {
+                  // For larger elements, just hide them
+                  el.style.display = 'none';
+                }
+              }
+            }
+          });
+          
+          // Remove any fixed/absolute positioned elements that might be overlays
+          document.querySelectorAll('*').forEach(el => {
+            const style = window.getComputedStyle(el);
+            if ((style.position === 'fixed' || style.position === 'absolute') && 
+                (el.textContent || '').toLowerCase().includes('replit')) {
+              el.remove();
+            }
+          });
+        }
+        
+        // Run immediately before anything loads
+        if (document.body) {
+          removeReplitBranding();
+        }
+        
+        // Run after DOM is loaded
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', removeReplitBranding);
+        } else {
+          removeReplitBranding();
+        }
+        
+        // Run after page is fully loaded
+        window.addEventListener('load', removeReplitBranding);
+        
+        // Run very frequently to catch dynamically injected elements
+        setInterval(removeReplitBranding, 100);
+        
+        // Observe DOM changes aggressively
+        const observer = new MutationObserver(() => {
+          removeReplitBranding();
+        });
+        
+        if (document.body) {
+          observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['class', 'id', 'style']
+          });
+        }
+        
+        // Also observe the head for any injected scripts/styles
+        if (document.head) {
+          observer.observe(document.head, {
+            childList: true,
+            subtree: true
+          });
+        }
+      })();
+    </script>
+    <style>
+      /* Aggressively hide any Replit-related elements */
+      [class*="replit" i],
+      [id*="replit" i],
+      [class*="Replit"],
+      [id*="Replit"],
+      iframe[src*="replit" i],
+      div[data-replit],
+      a[href*="replit" i],
+      img[src*="replit" i],
+      img[alt*="replit" i],
+      svg[class*="replit" i],
+      *[style*="replit" i] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        height: 0 !important;
+        width: 0 !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
+        position: absolute !important;
+        left: -9999px !important;
+        top: -9999px !important;
+      }
+      
+      /* Hide any fixed/absolute positioned overlays that might be Replit */
+      body > *[style*="position: fixed" i],
+      body > *[style*="position:absolute" i] {
+        content: "";
+      }
+    </style>
   </body>
 </html>

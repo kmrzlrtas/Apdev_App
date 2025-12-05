@@ -48,7 +48,14 @@ export async function setupVite(server: Server, app: Express) {
         `src="/src/main.tsx"`,
         `src="/src/main.tsx?v=${nanoid()}"`,
       );
-      const page = await vite.transformIndexHtml(url, template);
+      let page = await vite.transformIndexHtml(url, template);
+      
+      // Remove any Replit branding from the transformed HTML
+      page = page.replace(/<script[^>]*replit[^>]*>[\s\S]*?<\/script>/gi, '');
+      page = page.replace(/<link[^>]*replit[^>]*>/gi, '');
+      page = page.replace(/<style[^>]*replit[^>]*>[\s\S]*?<\/style>/gi, '');
+      page = page.replace(/replit/gi, '');
+      
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
